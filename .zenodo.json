@@ -5,7 +5,7 @@
   "language": "eng",
   "upload_type": "software",
   "access_right": "open",
-  "version": "eb2cf3e-dirty",
+  "version": "c148e69",
   "publication_date": "2025-05-04",
   "creators": [
     {
@@ -15,7 +15,7 @@
       "type": "Author"
     }
   ],
-  "keywords": ["AI","Education","Healthcare","Post-Quantum Cryptography","Quantum","opensource","software"],
+  "keywords": ["AI","Education","Healthcare","Post-Quantum Cryptography","Quantum","performance","rust","systems programming"],
   "related_identifiers": [
     { "identifier": "https://github.com/qompassai/qompass-hold", "relation": "isSupplementTo", "resource_type": "software" },
     { "identifier": "https://github.com/qompassai/qompass-hold/releases/tag/2025-05-04", "relation": "isIdenticalTo", "resource_type": "software" },
