@@ -1,0 +1,7 @@
+# ~/.GH/Qompass/Rust/qompass-hold/.cargo/config.toml
+# --------------------------------------------------
+# Copyright (C) 2025 Qompass AI, All rights reserved
+
+[build]
+target-dir = "releases"
+
