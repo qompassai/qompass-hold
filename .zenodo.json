@@ -1,11 +1,11 @@
 {
-  "title": "pass-secret-service",
-  "description": "Implementation of org.freedesktop.secrets using `pass`",
+  "title": "qompass-hold",
+  "description": "Qompass Secret-Service",
   "license": "Q-CDA-1.0",
   "language": "eng",
   "upload_type": "software",
   "access_right": "open",
-  "version": "v0.2.1-dirty",
+  "version": "1ca3861",
   "publication_date": "2025-05-04",
   "creators": [
     {
@@ -15,12 +15,12 @@
       "type": "Author"
     }
   ],
-  "keywords": ["AI","Education","Healthcare","Post-Quantum Cryptography","Quantum","performance","rust","systems programming"],
+  "keywords": ["AI","Education","Healthcare","Post-Quantum Cryptography","Quantum","opensource","software"],
   "related_identifiers": [
-    { "identifier": "https://github.com/grimsteel/pass-secret-service", "relation": "isSupplementTo", "resource_type": "software" },
-    { "identifier": "https://github.com/grimsteel/pass-secret-service/releases/tag/2025-05-04", "relation": "isIdenticalTo", "resource_type": "software" },
+    { "identifier": "https://github.com/qompassai/qompass-hold", "relation": "isSupplementTo", "resource_type": "software" },
+    { "identifier": "https://github.com/qompassai/qompass-hold/releases/tag/2025-05-04", "relation": "isIdenticalTo", "resource_type": "software" },
     { "identifier": "https://orcid.org/0000-0002-0302-4812", "relation": "isAuthorOf", "resource_type": "person" },
-    { "identifier": "https://github.com/grimsteel/pass-secret-service/actions", "relation": "isCompiledBy", "resource_type": "workflow" }
+    { "identifier": "https://github.com/qompassai/qompass-hold/actions", "relation": "isCompiledBy", "resource_type": "workflow" }
   ],
   "communities": [ { "identifier": "qompassai" } ],
   "contributors": [
