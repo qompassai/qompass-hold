@@ -1,14 +1,10 @@
+//qompassai/qompass-hold/src/error.rs
 use std::{
-    fmt::Display,
+    fmt,
     io::{self, ErrorKind},
 };
 
-use zbus::{
-    fdo,
-    message::{self, Header},
-    names::ErrorName,
-    DBusError, Message,
-};
+use zbus::{fdo, names::ErrorName};
 
 #[derive(Debug)]
 pub enum Error {
@@ -22,6 +18,24 @@ pub enum Error {
     PermissionDenied,
 }
 
+// Implement Display for Error (required for std::error::Error)
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::IoError(e) => write!(f, "I/O Error: {e}"),
+            Error::DbusError(e) => write!(f, "D-Bus Error: {e}"),
+            Error::RedbError(e) => write!(f, "ReDB Error: {e}"),
+            Error::GpgError(e) => write!(f, "GPG Error: {e}"),
+            Error::NotInitialized => write!(f, "Pass is not initialized"),
+            Error::InvalidSession => write!(f, "Invalid secret service session"),
+            Error::PermissionDenied => write!(f, "Access denied"),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+// Conversion traits for ergonomic error handling
 impl From<io::Error> for Error {
     fn from(value: io::Error) -> Self {
         Self::IoError(value)
@@ -40,22 +54,23 @@ impl From<redb::Error> for Error {
     }
 }
 
-impl DBusError for Error {
-    fn create_reply(&self, msg: &Header<'_>) -> zbus::Result<Message> {
-        let name = self.name();
-        #[allow(deprecated)]
-        let msg = message::Builder::error(msg, name)?;
-
-        match self {
-            Error::IoError(e) => msg.build(&(e.to_string(),)),
-            Error::DbusError(e) => msg.build(&(e.to_string(),)),
-            Error::RedbError(e) => msg.build(&(e.to_string(),)),
-            Error::GpgError(e) => msg.build(&(e,)),
-            _ => msg.build(&()),
+// Allow using `?` in D-Bus handlers returning zbus::fdo::Error
+impl From<Error> for fdo::Error {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::IoError(e) => fdo::Error::IOError(e.to_string()),
+            Error::DbusError(e) => fdo::Error::Failed(e.to_string()),
+            Error::RedbError(e) => fdo::Error::Failed(e.to_string()),
+            Error::GpgError(e) => fdo::Error::Failed(e),
+            Error::NotInitialized => fdo::Error::Failed("Pass is not initialized".to_string()),
+            Error::InvalidSession => fdo::Error::Failed("Invalid session".to_string()),
+            Error::PermissionDenied => fdo::Error::AccessDenied("Access denied".to_string()),
         }
     }
+}
 
-    fn name(&self) -> ErrorName<'_> {
+impl Error {
+    pub fn dbus_error_name(&self) -> ErrorName<'_> {
         ErrorName::from_static_str_unchecked(match self {
             Error::IoError(e) if e.kind() == ErrorKind::NotFound => {
                 "org.freedesktop.Secret.Error.NoSuchObject"
@@ -69,8 +84,7 @@ impl DBusError for Error {
             Error::PermissionDenied => "org.freedesktop.DBus.Error.AccessDenied",
         })
     }
-
-    fn description(&self) -> Option<&str> {
+    pub fn description(&self) -> Option<&str> {
         match self {
             Error::DbusError(zbus::Error::MethodError(_, desc, _)) => desc.as_deref(),
             Error::GpgError(e) => Some(e.as_str()),
@@ -79,35 +93,10 @@ impl DBusError for Error {
     }
 }
 
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::IoError(e) => write!(f, "I/O Error: {e}"),
-            Error::DbusError(e) => write!(f, "D-Bus Error: {e}"),
-            Error::GpgError(e) => write!(f, "GPG Error; {e}"),
-            Error::RedbError(e) => write!(f, "ReDB Error: {e}"),
-            Error::NotInitialized => write!(f, "Pass is not initialized"),
-            Error::InvalidSession => write!(f, "Invalid secret service session"),
-            Error::PermissionDenied => write!(f, "Access denied"),
-        }
-    }
-}
-
-impl From<Error> for fdo::Error {
-    fn from(value: Error) -> Self {
-        match value {
-            Error::IoError(err) => Self::IOError(format!("{err}")),
-            Error::DbusError(err) => Self::ZBus(err),
-            Error::PermissionDenied => Self::AccessDenied("Access denied".into()),
-            err => Self::Failed(format!("{err}")),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
+// Your project-wide Result alias
 pub type Result<T = ()> = std::result::Result<T, Error>;
 
+// Utility traits/macros
 pub trait IntoResult<T> {
     fn into_result(self) -> Result<T>;
 }
@@ -130,12 +119,14 @@ impl<T> OptionNoneNotFound<T> for Option<T> {
 
 macro_rules! raise_nonexistent_table {
     ($expression:expr) => {
-        raise_nonexistent_table!($expression, Err(io::Error::from(io::ErrorKind::NotFound).into()))
+        raise_nonexistent_table!(
+            $expression,
+            Err(io::Error::from(io::ErrorKind::NotFound).into())
+        )
     };
     ($expression:expr, $default:expr) => {
         match $expression {
             Ok(t) => t,
-            // table does not exist yet - that's ok
             Err(redb::TableError::TableDoesNotExist(_)) => {
                 return $default;
             }

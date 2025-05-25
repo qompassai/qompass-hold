@@ -1,14 +1,18 @@
+//qompassai/qompass-hold/src/dbus_server/service.rs
 use std::{collections::HashMap, sync::Arc};
 
 use nanoid::nanoid;
 use zbus::{
-    fdo, interface, message::Header, object_server::SignalContext, zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Value}, Connection, ObjectServer
+    Connection, ObjectServer, fdo, interface,
+    message::Header,
+    object_server::SignalEmitter,
+    zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Value},
 };
 
 use crate::{
     error::{Error, OptionNoneNotFound, Result},
     pass::PasswordStore,
-    secret_store::{slugify, SecretStore, NANOID_ALPHABET},
+    secret_store::{NANOID_ALPHABET, SecretStore, slugify},
 };
 
 use super::{
@@ -16,13 +20,14 @@ use super::{
     item::Item,
     session::{Session, SessionAlgorithm},
     utils::{
-        alias_path, collection_path, secret_alias_path, secret_path, session_path, try_interface, Secret, EMPTY_PATH
+        EMPTY_PATH, Secret, alias_path, collection_path, secret_alias_path, secret_path,
+        session_path, try_interface,
     },
 };
 
 #[derive(Debug)]
 pub struct Service<'a> {
-    store: SecretStore<'a>
+    store: SecretStore<'a>,
 }
 
 impl Service<'static> {
@@ -34,7 +39,6 @@ impl Service<'static> {
 
             let mut aliases = store.list_all_aliases().await?;
 
-            // initialize the default store if necessary
             if !aliases.contains_key("default") {
                 let id = store
                     .create_collection(Some("Default".into()), Some("default".into()))
@@ -42,7 +46,6 @@ impl Service<'static> {
                 aliases.insert(id, vec!["default".into()]);
             }
 
-            // add existing collections
             for collection in store.collections().await {
                 let collection_aliases = aliases.remove(&collection).into_iter().flatten();
                 let path = collection_path(&collection).unwrap();
@@ -60,7 +63,6 @@ impl Service<'static> {
                     })
                     .collect();
 
-                // add the collection secrets
                 for secret in &secrets {
                     if let Some(path) = secret_path(&*collection_id, &*secret.id) {
                         object_server.at(path, secret.clone()).await?;
@@ -72,26 +74,21 @@ impl Service<'static> {
                     id: collection_id,
                 };
 
-                // add the aliases
                 for alias in collection_aliases {
                     if let Some(path) = alias_path(&alias) {
                         object_server.at(path, c.clone()).await?;
                     }
-                    // add the secrets under the alias
                     for secret in &secrets {
                         if let Some(path) = secret_alias_path(&alias, &*secret.id) {
                             object_server.at(path, secret.clone()).await?;
                         }
                     }
                 }
-                // add the collection
                 object_server.at(path, c).await?;
             }
         }
 
-        Ok(Service {
-            store
-        })
+        Ok(Service { store })
     }
 
     fn make_collection(&self, name: String) -> Collection<'static> {
@@ -110,7 +107,7 @@ impl Service<'static> {
         _input: OwnedValue,
         #[zbus(header)] header: Header<'_>,
         #[zbus(object_server)] object_server: &ObjectServer,
-        #[zbus(connection)] connection: &Connection
+        #[zbus(connection)] connection: &Connection,
     ) -> fdo::Result<(Value, ObjectPath)> {
         let client_name = header.sender().unwrap().to_owned().into();
         match &*algorithm {
@@ -121,7 +118,7 @@ impl Service<'static> {
                     SessionAlgorithm::Plain,
                     client_name,
                     path.clone().into(),
-                    connection.clone()
+                    connection.clone(),
                 );
                 object_server.at(&path, session).await?;
                 Ok(("".into(), path))
@@ -137,15 +134,13 @@ impl Service<'static> {
         &self,
         properties: HashMap<String, OwnedValue>,
         alias: String,
-        #[zbus(signal_context)] signal: SignalContext<'_>,
+        #[zbus(signal_context)] signal: SignalEmitter<'_>,
         #[zbus(object_server)] object_server: &ObjectServer,
     ) -> Result<(ObjectPath, ObjectPath)> {
-        // stringify the labelg
         let label: Option<String> = properties
             .get("org.freedesktop.Secret.Collection.Label")
             .and_then(|v| v.downcast_ref().ok());
 
-        // slugify the alias and handle the case where it's empty
         let alias = slugify(&alias);
 
         let alias = if alias == "" { None } else { Some(alias) };
@@ -213,7 +208,7 @@ impl Service<'static> {
         items: Vec<ObjectPath<'_>>,
         session: ObjectPath<'_>,
         #[zbus(object_server)] object_server: &ObjectServer,
-        #[zbus(header)] header: Header<'_>
+        #[zbus(header)] header: Header<'_>,
     ) -> Result<HashMap<OwnedObjectPath, Secret>> {
         let session_ref = try_interface(object_server.interface::<_, Session>(&session).await)?
             .ok_or(Error::InvalidSession)?;
@@ -224,7 +219,11 @@ impl Service<'static> {
         for item_path in items {
             let item_ref = try_interface(object_server.interface::<_, Item>(&item_path).await)?
                 .into_not_found()?;
-            let secret = item_ref.get().await.read_with_session(&header, &session).await?;
+            let secret = item_ref
+                .get()
+                .await
+                .read_with_session(&header, &session)
+                .await?;
             results.insert(item_path.into(), secret);
         }
 
@@ -316,12 +315,12 @@ impl Service<'static> {
     // signals
 
     #[zbus(signal)]
-    async fn collection_created(ctx: &SignalContext<'_>, path: ObjectPath<'_>) -> zbus::Result<()>;
+    async fn collection_created(ctx: &SignalEmitter<'_>, path: ObjectPath<'_>) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    async fn collection_deleted(ctx: &SignalContext<'_>, path: ObjectPath<'_>) -> zbus::Result<()>;
+    async fn collection_deleted(ctx: &SignalEmitter<'_>, path: ObjectPath<'_>) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    async fn collection_modified(ctx: &SignalContext<'_>, path: ObjectPath<'_>)
-        -> zbus::Result<()>;
+    async fn collection_modified(ctx: &SignalEmitter<'_>, path: ObjectPath<'_>)
+    -> zbus::Result<()>;
 }

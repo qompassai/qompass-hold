@@ -1,11 +1,11 @@
+//qompassai/qompass-hold/src/dbus_server/collection.rs
 use std::{collections::HashMap, sync::Arc};
 
 use zbus::{
-    fdo, interface,
+    Connection, ObjectServer, fdo, interface,
     message::Header,
-    object_server::SignalContext,
+    object_server::SignalEmitter,
     zvariant::{Dict, ObjectPath, Value},
-    Connection, ObjectServer,
 };
 
 use crate::{
@@ -14,10 +14,12 @@ use crate::{
 };
 
 use super::{
-    item::Item, session::Session, utils::{
-        alias_path, collection_path, secret_alias_path, secret_path, time_to_int, try_interface,
-        Secret, EMPTY_PATH,
-    }
+    item::Item,
+    session::Session,
+    utils::{
+        EMPTY_PATH, Secret, alias_path, collection_path, secret_alias_path, secret_path,
+        time_to_int, try_interface,
+    },
 };
 
 #[derive(Clone, Debug)]
@@ -45,11 +47,9 @@ impl Collection<'static> {
     ) -> Result<ObjectPath> {
         let secrets = self.store.list_secrets(&*self.id).await?;
 
-        // remove this collection from the object server
         if let Some(path) = collection_path(&*self.id) {
             try_interface(object_server.remove::<Self, _>(&path).await)?;
 
-            // emit the collection deleted event
             connection
                 .emit_signal(
                     Option::<String>::None,
@@ -65,7 +65,6 @@ impl Collection<'static> {
                 try_interface(object_server.remove::<Item, _>(path).await)?;
             }
         }
-        // remove all aliases
         for alias in self
             .store
             .list_aliases_for_collection(self.id.clone())
@@ -81,7 +80,6 @@ impl Collection<'static> {
             }
         }
 
-        // delete the collection from the store
         self.store.delete_collection(self.id.clone()).await?;
 
         Ok(EMPTY_PATH)
@@ -92,7 +90,10 @@ impl Collection<'static> {
             .store
             .search_collection(self.id.clone(), Arc::new(attributes))
             .await?;
-        let paths = items.into_iter().filter_map(|item| secret_path(&*self.id, &item)).collect();
+        let paths = items
+            .into_iter()
+            .filter_map(|item| secret_path(&*self.id, &item))
+            .collect();
 
         Ok(paths)
     }
@@ -102,7 +103,7 @@ impl Collection<'static> {
         properties: HashMap<String, Value<'_>>,
         secret: Secret,
         replace: bool,
-        #[zbus(signal_context)] signal_context: SignalContext<'_>,
+        #[zbus(signal_context)] signal_context: SignalEmitter<'_>,
         #[zbus(object_server)] object_server: &ObjectServer,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<(ObjectPath, ObjectPath)> {
@@ -222,11 +223,11 @@ impl Collection<'static> {
     }
 
     #[zbus(signal)]
-    async fn item_created(ctx: &SignalContext<'_>, path: ObjectPath<'_>) -> zbus::Result<()>;
+    async fn item_created(ctx: &SignalEmitter<'_>, path: ObjectPath<'_>) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    async fn item_deleted(ctx: &SignalContext<'_>, path: ObjectPath<'_>) -> zbus::Result<()>;
+    async fn item_deleted(ctx: &SignalEmitter<'_>, path: ObjectPath<'_>) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    async fn item_changed(ctx: &SignalContext<'_>, path: ObjectPath<'_>) -> zbus::Result<()>;
+    async fn item_changed(ctx: &SignalEmitter<'_>, path: ObjectPath<'_>) -> zbus::Result<()>;
 }

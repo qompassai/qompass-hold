@@ -1,12 +1,21 @@
-use tokio::{select, sync::oneshot::{self, Sender}, task};
-use zbus::{
-    fdo::{self, DBusProxy}, interface, message::Header, names::OwnedUniqueName, zvariant::OwnedObjectPath, Connection, ObjectServer
-};
 use futures_util::StreamExt;
+use tokio::{
+    select,
+    sync::oneshot::{self, Sender},
+    task,
+};
+use zbus::{
+    Connection, ObjectServer,
+    fdo::{self, DBusProxy},
+    interface,
+    message::Header,
+    names::OwnedUniqueName,
+    zvariant::OwnedObjectPath,
+};
 
 use crate::error::{Error, Result};
 
-use super::utils::{try_interface, Secret};
+use super::utils::{Secret, try_interface};
 
 pub enum SessionAlgorithm {
     Plain,
@@ -16,14 +25,14 @@ pub struct Session {
     alg: SessionAlgorithm,
     client_name: OwnedUniqueName,
     path: OwnedObjectPath,
-    closed: Option<Sender<()>>
+    closed: Option<Sender<()>>,
 }
 impl Session {
     pub fn new(
         alg: SessionAlgorithm,
         client_name: OwnedUniqueName,
         path: OwnedObjectPath,
-        connection: Connection
+        connection: Connection,
     ) -> Self {
         let (tx, rx) = oneshot::channel();
 
@@ -34,12 +43,9 @@ impl Session {
 
             let object_server = connection.object_server();
 
-            let mut name_gone_stream = dbus.receive_name_owner_changed_with_args(
-                &[
-                    (0, &name_str),
-                    (2, "")
-                ]
-            ).await?;
+            let mut name_gone_stream = dbus
+                .receive_name_owner_changed_with_args(&[(0, &name_str), (2, "")])
+                .await?;
 
             select! {
                 _ = rx => {
@@ -53,15 +59,15 @@ impl Session {
 
             zbus::Result::Ok(())
         });
-        
+
         Self {
             alg,
             client_name,
             path,
-            closed: Some(tx)
+            closed: Some(tx),
         }
     }
-    
+
     pub fn decrypt(&self, secret: Secret, header: &Header<'_>) -> Result<Vec<u8>> {
         // make sure they're allowed to do this
         if !header.sender().is_some_and(|s| self.client_name == *s) {
@@ -104,7 +110,7 @@ impl Session {
             if let Some(tx) = self.closed.take() {
                 let _ = tx.send(());
             }
-            
+
             Ok(())
         } else {
             Err(fdo::Error::AccessDenied(
