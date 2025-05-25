@@ -16,7 +16,6 @@ keywords:
   - Healthcare
   - Post-Quantum Cryptography
   - Quantum
-  - performance
-  - rust
-  - systems programming
+  - opensource
+  - software
 abstract: "Qompass Secret-Service"
