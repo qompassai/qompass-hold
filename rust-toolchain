@@ -1,2 +1,6 @@
+# /qompassai/qompass-hold/rust-toolchain
+# Qompass AI Qompass-Hold Rust Toolchain
+# Copyright (C) 2025 Qompass AI, All rights reserved
+####################################################
 [toolchain]
 channel = "nightly"
