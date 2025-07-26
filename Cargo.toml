@@ -8,21 +8,13 @@ readme = "README.md"
 repository = "https://github.com/qompassai/qompass-hold"
 documentation = "https://docs.rs/qompass-hold"
 
-[cache]
-compression-level = 6
 
 [dependencies]
 futures-util = "0.3.31"
 libc = "0.2.172"
 nanoid = "0.4.0"
-oqs = { version = "0.11.0", default-features = false, features = [
-  "vendored",
-  "kems",
-] }
-oqs-sys = { version = "0.11.0", default-features = false, features = [
-  "vendored",
-  "kems",
-] }
+oqs = { version = "0.10.1", default-features = false, features = ["vendored", "kems", "sigs"] }
+oqs-sys = { version = "0.10.1", default-features = false, features = ["vendored", "kems", "sigs"] }
 redb = "2.5.0"
 serde = "1.0.219"
 tokio = { version = "1.44.2", features = [
@@ -44,5 +36,4 @@ lto = "thin"
 opt-level = "z"
 overflow-checks = true
 panic = "abort"
-relocation-mode = "pic"
 strip = true
