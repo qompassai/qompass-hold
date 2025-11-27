@@ -1,0 +1,39 @@
+[package]
+name = "qompass-hold"
+version = "0.1.0"
+authors = ["Matt A. Porter <map@qompass.ai>"]
+edition = "2024"
+license = "AGPL-3.0 AND QCDA-1.0"
+readme = "README.md"
+repository = "https://github.com/qompassai/qompass-hold"
+documentation = "https://docs.rs/qompass-hold"
+
+
+[dependencies]
+futures-util = "0.3.31"
+libc = "0.2.172"
+nanoid = "0.4.0"
+oqs = { version = "0.10.1", default-features = false, features = ["vendored", "kems", "sigs"] }
+oqs-sys = { version = "0.10.1", default-features = false, features = ["vendored", "kems", "sigs"] }
+redb = "2.5.0"
+serde = "1.0.219"
+tokio = { version = "1.44.2", features = [
+  "fs",
+  "rt",
+  "rt-multi-thread",
+  "macros",
+  "process",
+] }
+zbus = { version = "5.6.0", default-features = false, features = ["tokio"] }
+
+[build-dependencies]
+cc = "1.2.21"
+
+[profile.release]
+codegen-units = 1
+incremental = false
+lto = "thin"
+opt-level = "z"
+overflow-checks = true
+panic = "abort"
+strip = true
