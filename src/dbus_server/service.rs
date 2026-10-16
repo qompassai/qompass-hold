@@ -108,7 +108,7 @@ impl Service<'static> {
         #[zbus(header)] header: Header<'_>,
         #[zbus(object_server)] object_server: &ObjectServer,
         #[zbus(connection)] connection: &Connection,
-    ) -> fdo::Result<(Value, ObjectPath)> {
+    ) -> fdo::Result<(Value<'_>, ObjectPath<'_>)> {
         let client_name = header.sender().unwrap().to_owned().into();
         match &*algorithm {
             "plain" => {
@@ -136,7 +136,7 @@ impl Service<'static> {
         alias: String,
         #[zbus(signal_context)] signal: SignalEmitter<'_>,
         #[zbus(object_server)] object_server: &ObjectServer,
-    ) -> Result<(ObjectPath, ObjectPath)> {
+    ) -> Result<(ObjectPath<'_>, ObjectPath<'_>)> {
         let label: Option<String> = properties
             .get("org.freedesktop.Secret.Collection.Label")
             .and_then(|v| v.downcast_ref().ok());
@@ -179,7 +179,7 @@ impl Service<'static> {
     async fn search_items(
         &self,
         attributes: HashMap<String, String>,
-    ) -> Result<(Vec<ObjectPath>, Vec<ObjectPath>)> {
+    ) -> Result<(Vec<ObjectPath<'_>>, Vec<ObjectPath<'_>>)> {
         let items = self.store.search_all_collections(attributes).await?;
         let paths = items
             .into_iter()
@@ -193,12 +193,15 @@ impl Service<'static> {
         Ok((paths, vec![]))
     }
 
-    async fn lock(&self, _objects: Vec<OwnedObjectPath>) -> (Vec<ObjectPath>, ObjectPath) {
+    async fn lock(&self, _objects: Vec<OwnedObjectPath>) -> (Vec<ObjectPath<'_>>, ObjectPath<'_>) {
         // we don't support locking
         (vec![], EMPTY_PATH)
     }
 
-    async fn unlock(&self, objects: Vec<OwnedObjectPath>) -> (Vec<OwnedObjectPath>, ObjectPath) {
+    async fn unlock(
+        &self,
+        objects: Vec<OwnedObjectPath>,
+    ) -> (Vec<OwnedObjectPath>, ObjectPath<'_>) {
         // we don't support locking - just say all of them were unlocked
         (objects, EMPTY_PATH)
     }
@@ -230,7 +233,7 @@ impl Service<'static> {
         Ok(results)
     }
 
-    async fn read_alias(&self, name: String) -> Result<ObjectPath> {
+    async fn read_alias(&self, name: String) -> Result<ObjectPath<'_>> {
         let alias = slugify(&name);
 
         if let Some(target) = collection_path(self.store.get_alias(Arc::new(alias)).await?) {
@@ -303,7 +306,7 @@ impl Service<'static> {
     }
 
     #[zbus(property)]
-    async fn collections(&self) -> Vec<ObjectPath> {
+    async fn collections(&self) -> Vec<ObjectPath<'_>> {
         self.store
             .collections()
             .await

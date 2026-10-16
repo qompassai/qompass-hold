@@ -4,7 +4,11 @@ use std::{
     io::{self, ErrorKind},
 };
 
-use zbus::{fdo, names::ErrorName};
+use zbus::{
+    DBusError, fdo,
+    message::{Header, Message},
+    names::ErrorName,
+};
 
 #[derive(Debug)]
 pub enum Error {
@@ -93,6 +97,26 @@ impl Error {
     }
 }
 
+// zbus 5 requires method error types to implement DBusError.
+// The trait delegates to the hand-written mapping above so the
+// error names clients see (including the NotFound → NoSuchObject
+// special case) are exactly the ones dbus_error_name has always
+// produced; the reply body is the error's Display text.
+impl DBusError for Error {
+    fn create_reply(&self, msg: &Header<'_>) -> zbus::Result<Message> {
+        Message::error(msg, self.name())?.build(&self.to_string())
+    }
+
+    fn name(&self) -> ErrorName<'_> {
+        self.dbus_error_name()
+    }
+
+    fn description(&self) -> Option<&str> {
+        // call the inherent method, not this trait method
+        Error::description(self)
+    }
+}
+
 // Your project-wide Result alias
 pub type Result<T = ()> = std::result::Result<T, Error>;
 
@@ -135,3 +159,115 @@ macro_rules! raise_nonexistent_table {
     };
 }
 pub(crate) use raise_nonexistent_table;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn name(err: &Error) -> String {
+        err.dbus_error_name().to_string()
+    }
+
+    // Validation: every variant maps to its documented D-Bus name.
+    // These strings are the wire contract Secret Service clients see.
+    #[test]
+    fn dbus_error_names_for_simple_variants() {
+        assert_eq!(
+            name(&Error::NotInitialized),
+            "me.grimsteel.PassSecretService.PassNotInitialized"
+        );
+        assert_eq!(
+            name(&Error::InvalidSession),
+            "org.freedesktop.Secret.Error.NoSession"
+        );
+        assert_eq!(
+            name(&Error::PermissionDenied),
+            "org.freedesktop.DBus.Error.AccessDenied"
+        );
+        assert_eq!(
+            name(&Error::GpgError("boom".to_owned())),
+            "me.grimsteel.PassSecretService.GPGError"
+        );
+    }
+
+    // Validation + adversarial: the I/O mapping distinguishes
+    // NotFound (a missing secret is a normal lookup outcome) from
+    // every other I/O failure — conflating them would misreport
+    // real errors to clients as "no such object".
+    #[test]
+    fn dbus_error_name_distinguishes_not_found() {
+        let not_found: Error = io::Error::from(io::ErrorKind::NotFound).into();
+        assert_eq!(
+            name(&not_found),
+            "org.freedesktop.Secret.Error.NoSuchObject"
+        );
+        let other: Error = io::Error::from(io::ErrorKind::PermissionDenied).into();
+        assert_eq!(name(&other), "org.freedesktop.DBus.Error.IOError");
+    }
+
+    // Validation: Display strings stay human-meaningful per variant.
+    #[test]
+    fn display_includes_variant_context() {
+        assert_eq!(Error::NotInitialized.to_string(), "Pass is not initialized");
+        assert_eq!(Error::PermissionDenied.to_string(), "Access denied");
+        assert!(
+            Error::GpgError("bad key".to_owned())
+                .to_string()
+                .contains("bad key")
+        );
+    }
+
+    // Adversarial: description() must not invent text for variants
+    // that carry none, and must surface the GPG message it does carry.
+    #[test]
+    fn description_only_where_carried() {
+        assert_eq!(Error::NotInitialized.description(), None);
+        assert_eq!(Error::PermissionDenied.description(), None);
+        assert_eq!(
+            Error::GpgError("expired".to_owned()).description(),
+            Some("expired")
+        );
+    }
+
+    // Validation: Some passes through into_not_found unchanged.
+    // Adversarial: None becomes the NotFound error (not a panic,
+    // not a generic failure), with the NoSuchObject D-Bus name.
+    #[test]
+    fn option_into_not_found() {
+        assert_eq!(Some(7).into_not_found().unwrap(), 7);
+        let err = None::<u8>.into_not_found().unwrap_err();
+        assert_eq!(
+            err.dbus_error_name().to_string(),
+            "org.freedesktop.Secret.Error.NoSuchObject"
+        );
+    }
+
+    // Validation: the DBusError trait surface (what zbus 5 actually
+    // sends) reports the same name as dbus_error_name and the same
+    // description as the inherent method — the two must never drift.
+    #[test]
+    fn dbus_error_trait_delegates_to_inherent_mapping() {
+        let err = Error::GpgError("expired".to_owned());
+        assert_eq!(
+            DBusError::name(&err).as_str(),
+            "me.grimsteel.PassSecretService.GPGError"
+        );
+        assert_eq!(DBusError::description(&err), Some("expired"));
+        let err = Error::NotInitialized;
+        assert_eq!(
+            DBusError::name(&err).as_str(),
+            "me.grimsteel.PassSecretService.PassNotInitialized"
+        );
+        assert_eq!(DBusError::description(&err), None);
+    }
+
+    // Validation: the fdo conversion keeps PermissionDenied as the
+    // distinct AccessDenied error clients check for.
+    #[test]
+    fn fdo_conversion_preserves_access_denied() {
+        let fdo_err = fdo::Error::from(Error::PermissionDenied);
+        assert!(matches!(fdo_err, fdo::Error::AccessDenied(_)));
+        let fdo_err = fdo::Error::from(Error::InvalidSession);
+        assert!(matches!(fdo_err, fdo::Error::Failed(_)));
+    }
+}

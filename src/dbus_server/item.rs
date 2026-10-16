@@ -1,6 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
-use zbus::{fdo, interface, message::Header, object_server::InterfaceDeref, zvariant::ObjectPath, Connection, ObjectServer};
+use zbus::{
+    Connection, ObjectServer, fdo, interface, message::Header, object_server::InterfaceDeref,
+    zvariant::ObjectPath,
+};
 
 use crate::{
     error::{Error, Result},
@@ -10,8 +13,8 @@ use crate::{
 use super::{
     session::Session,
     utils::{
-        collection_path, secret_alias_path, secret_path, time_to_int, try_interface, Secret,
-        EMPTY_PATH,
+        EMPTY_PATH, Secret, collection_path, secret_alias_path, secret_path, time_to_int,
+        try_interface,
     },
 };
 
@@ -23,7 +26,7 @@ pub struct Item<'a> {
 }
 
 impl<'a> Item<'a> {
-    fn path(&self) -> ObjectPath {
+    fn path(&self) -> ObjectPath<'_> {
         secret_path(&*self.collection_id, &*self.id).unwrap()
     }
 
@@ -42,7 +45,11 @@ impl<'a> Item<'a> {
 }
 
 impl<'a> Item<'a> {
-    pub async fn read_with_session(&self, header: &Header<'_>, session: &InterfaceDeref<'_, Session>) -> Result<Secret> {
+    pub async fn read_with_session(
+        &self,
+        header: &Header<'_>,
+        session: &InterfaceDeref<'_, Session>,
+    ) -> Result<Secret> {
         let secret_value = self
             .store
             .read_secret(&*self.collection_id, &*self.id, true)
@@ -58,7 +65,7 @@ impl Item<'static> {
         &self,
         #[zbus(connection)] connection: &Connection,
         #[zbus(object_server)] object_server: &ObjectServer,
-    ) -> Result<ObjectPath> {
+    ) -> Result<ObjectPath<'_>> {
         // delete from the stoer
         self.store
             .delete_secret(self.collection_id.clone(), self.id.clone())
@@ -90,14 +97,16 @@ impl Item<'static> {
         session: ObjectPath<'_>,
         #[zbus(header)] header: Header<'_>,
         #[zbus(object_server)] object_server: &ObjectServer,
-    ) -> Result<(Secret, )> {
-        Ok((self.read_with_session(
-            &header,
-            &try_interface(object_server.interface::<_, Session>(&session).await)?
-                .ok_or(Error::InvalidSession)?
-                .get()
-                .await
-        ).await?, ))
+    ) -> Result<(Secret,)> {
+        Ok((self
+            .read_with_session(
+                &header,
+                &try_interface(object_server.interface::<_, Session>(&session).await)?
+                    .ok_or(Error::InvalidSession)?
+                    .get()
+                    .await,
+            )
+            .await?,))
     }
 
     async fn set_secret(

@@ -7,7 +7,7 @@ use redb::{
 use tokio::{sync::RwLock, task::spawn_blocking};
 
 use crate::{
-    error::{raise_nonexistent_table, IntoResult, OptionNoneNotFound, Result},
+    error::{IntoResult, OptionNoneNotFound, Result, raise_nonexistent_table},
     pass::PasswordStore,
     redb_imps::RedbHashMap,
 };
@@ -80,7 +80,8 @@ pub fn search_collection(attrs: &HashMap<String, String>, db: &Database) -> Resu
 
     let tx = db.begin_read().into_result()?;
     let attributes = raise_nonexistent_table!(tx.open_multimap_table(ATTRIBUTES_TABLE), Ok(vec![]));
-    let attributes_reverse = raise_nonexistent_table!(tx.open_table(ATTRIBUTES_TABLE_REVERSE), Ok(vec![]));
+    let attributes_reverse =
+        raise_nonexistent_table!(tx.open_table(ATTRIBUTES_TABLE_REVERSE), Ok(vec![]));
 
     let mut attr_iter = attrs.into_iter();
 
@@ -193,7 +194,10 @@ impl<'a> SecretStore<'a> {
         Ok(spawn_blocking(move || -> Result<_> {
             // open the aliases table
             let tx = db.begin_read().into_result()?;
-            let table = raise_nonexistent_table!(tx.open_multimap_table(ALIASES_TABLE_REVERSE), Ok(HashMap::new()));
+            let table = raise_nonexistent_table!(
+                tx.open_multimap_table(ALIASES_TABLE_REVERSE),
+                Ok(HashMap::new())
+            );
             Ok(table
                 .iter()
                 .into_result()?
@@ -218,7 +222,7 @@ impl<'a> SecretStore<'a> {
         let db = self.db.clone();
         spawn_blocking(move || -> Result<_> {
             let tx = db.begin_read().into_result()?;
-            
+
             let aliases_reverse =
                 raise_nonexistent_table!(tx.open_multimap_table(ALIASES_TABLE_REVERSE));
 
@@ -766,5 +770,43 @@ impl<'a> SecretStore<'a> {
         })
         .await
         .unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::slugify;
+
+    // Validation: slugify lowercases ASCII words and joins them
+    // with single underscores. These outputs are collection IDs on
+    // disk — changing them would orphan existing collections, so
+    // the current semantics are pinned here deliberately.
+    #[test]
+    fn slugify_words() {
+        assert_eq!(slugify("Default Collection"), "default_collection");
+        assert_eq!(slugify("login"), "login");
+        assert_eq!(slugify("My 2nd Vault!"), "my_2nd_vault_");
+        assert_eq!(slugify("UPPER lower"), "upper_lower");
+    }
+
+    // Validation: separator runs collapse to one underscore and a
+    // leading separator produces none.
+    #[test]
+    fn slugify_separator_runs() {
+        assert_eq!(slugify("a---b___c"), "a_b_c");
+        assert_eq!(slugify("  padded"), "padded");
+        assert_eq!(slugify("a / b / c"), "a_b_c");
+    }
+
+    // Adversarial: empty and separator-only inputs yield an empty
+    // slug (callers must reject it), and non-ASCII letters act as
+    // separators rather than leaking multi-byte UTF-8 into a slug
+    // the implementation builds as bytes.
+    #[test]
+    fn slugify_adversarial_inputs() {
+        assert_eq!(slugify(""), "");
+        assert_eq!(slugify("!!!"), "");
+        assert_eq!(slugify("café"), "caf_");
+        assert_eq!(slugify("naïve vault"), "na_ve_vault");
     }
 }

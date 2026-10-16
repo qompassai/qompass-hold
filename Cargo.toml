@@ -11,10 +11,7 @@ documentation = "https://docs.rs/qompass-hold"
 
 [dependencies]
 futures-util = "0.3.31"
-libc = "0.2.172"
 nanoid = "0.4.0"
-oqs = { version = "0.10.1", default-features = false, features = ["vendored", "kems", "sigs"] }
-oqs-sys = { version = "0.10.1", default-features = false, features = ["vendored", "kems", "sigs"] }
 redb = "2.5.0"
 serde = "1.0.219"
 tokio = { version = "1.44.2", features = [
@@ -25,9 +22,6 @@ tokio = { version = "1.44.2", features = [
   "process",
 ] }
 zbus = { version = "5.6.0", default-features = false, features = ["tokio"] }
-
-[build-dependencies]
-cc = "1.2.21"
 
 [profile.release]
 codegen-units = 1

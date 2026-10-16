@@ -44,7 +44,7 @@ impl Collection<'static> {
         &self,
         #[zbus(connection)] connection: &Connection,
         #[zbus(object_server)] object_server: &ObjectServer,
-    ) -> Result<ObjectPath> {
+    ) -> Result<ObjectPath<'_>> {
         let secrets = self.store.list_secrets(&*self.id).await?;
 
         if let Some(path) = collection_path(&*self.id) {
@@ -85,7 +85,10 @@ impl Collection<'static> {
         Ok(EMPTY_PATH)
     }
 
-    async fn search_items(&self, attributes: HashMap<String, String>) -> Result<Vec<ObjectPath>> {
+    async fn search_items(
+        &self,
+        attributes: HashMap<String, String>,
+    ) -> Result<Vec<ObjectPath<'_>>> {
         let items = self
             .store
             .search_collection(self.id.clone(), Arc::new(attributes))
@@ -106,7 +109,7 @@ impl Collection<'static> {
         #[zbus(signal_context)] signal_context: SignalEmitter<'_>,
         #[zbus(object_server)] object_server: &ObjectServer,
         #[zbus(header)] header: Header<'_>,
-    ) -> Result<(ObjectPath, ObjectPath)> {
+    ) -> Result<(ObjectPath<'_>, ObjectPath<'_>)> {
         let secret_value =
             try_interface(object_server.interface::<_, Session>(&secret.session).await)?
                 .ok_or(Error::InvalidSession)?
@@ -180,7 +183,7 @@ impl Collection<'static> {
     }
 
     #[zbus(property)]
-    async fn items(&self) -> fdo::Result<Vec<ObjectPath>> {
+    async fn items(&self) -> fdo::Result<Vec<ObjectPath<'_>>> {
         Ok(self
             .store
             .list_secrets(&*self.id)

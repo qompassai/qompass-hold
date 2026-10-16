@@ -41,17 +41,68 @@ fn test_decode_int() {
 }
 
 /// encodes an int to the end of a buffer
+/// Values above `u32::MAX` do not fit the format and are an error;
+/// silently writing nothing (the previous behavior) would corrupt
+/// the stream — a decoder would read the next field as this length.
 fn encode_int<T: Write>(int: usize, buf: &mut T) -> io::Result<()> {
     if int < 253 {
         buf.write_all(&[int as u8])?;
     } else if int <= u16::MAX.into() {
         buf.write_all(&[254])?;
         buf.write_all(&(int as u16).to_le_bytes())?;
-    } else if int <= u32::MAX.try_into().unwrap() {
+    } else if int <= u32::MAX as usize {
         buf.write_all(&[255])?;
         buf.write_all(&(int as u32).to_le_bytes())?;
+    } else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "integer too large to encode (max u32::MAX)",
+        ));
     }
     Ok(())
+}
+
+#[test]
+fn test_encode_int_boundaries() {
+    // every width class, at both edges, must round-trip exactly
+    for value in [
+        0usize,
+        1,
+        252, // last single-byte value
+        253, // first two-byte (254-marker) value
+        u16::MAX as usize - 1,
+        u16::MAX as usize,     // last two-byte value
+        u16::MAX as usize + 1, // first four-byte (255-marker) value
+        u32::MAX as usize - 1,
+        u32::MAX as usize, // largest encodable value
+    ] {
+        let mut buf = Vec::new();
+        encode_int(value, &mut buf).unwrap();
+        assert_eq!(
+            decode_int(&mut buf.as_slice()).unwrap(),
+            value,
+            "round-trip of {value}"
+        );
+    }
+}
+
+#[test]
+fn test_encode_int_too_large_is_an_error() {
+    // adversarial: an out-of-format value must fail loudly and
+    // write nothing, never a silent empty encoding
+    let mut buf = Vec::new();
+    let err = encode_int(u32::MAX as usize + 1, &mut buf).unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert!(buf.is_empty(), "nothing may be written on error");
+}
+
+#[test]
+fn test_decode_int_truncated_input_is_an_error() {
+    // adversarial: truncated streams must error, not default to 0
+    assert!(decode_int(&mut [].as_slice()).is_err());
+    assert!(decode_int(&mut [254].as_slice()).is_err());
+    assert!(decode_int(&mut [254, 1].as_slice()).is_err());
+    assert!(decode_int(&mut [255, 1, 2].as_slice()).is_err());
 }
 
 #[test]
@@ -83,11 +134,13 @@ where
     V: Value,
     for<'a> K::SelfType<'a>: Hash + Eq,
 {
-    type SelfType<'a> = HashMap<K::SelfType<'a>, V::SelfType<'a>>
+    type SelfType<'a>
+        = HashMap<K::SelfType<'a>, V::SelfType<'a>>
     where
         Self: 'a;
 
-    type AsBytes<'a> = Vec<u8>
+    type AsBytes<'a>
+        = Vec<u8>
     where
         Self: 'a;
 
@@ -165,6 +218,15 @@ where
 fn test_redb_hashmap() {
     let map = HashMap::from([("hello", 5), ("foo", 4), ("bar", 3)]);
 
+    let serialized = RedbHashMap::<&str, u8>::as_bytes(&map);
+    let deserialized = RedbHashMap::<&str, u8>::from_bytes(&serialized);
+    assert_eq!(map, deserialized);
+}
+
+#[test]
+fn test_redb_hashmap_empty() {
+    // an empty map is a real stored value and must round-trip too
+    let map: HashMap<&str, u8> = HashMap::new();
     let serialized = RedbHashMap::<&str, u8>::as_bytes(&map);
     let deserialized = RedbHashMap::<&str, u8>::from_bytes(&serialized);
     assert_eq!(map, deserialized);
