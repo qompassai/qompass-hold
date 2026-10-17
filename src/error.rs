@@ -12,10 +12,10 @@ use zbus::{
 
 #[derive(Debug)]
 pub enum Error {
-    IoError(io::Error),
-    DbusError(zbus::Error),
-    RedbError(redb::Error),
-    GpgError(String),
+    Io(io::Error),
+    Dbus(Box<zbus::Error>),
+    Redb(Box<redb::Error>),
+    Gpg(String),
     // pass is not initialized
     NotInitialized,
     InvalidSession,
@@ -26,10 +26,10 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::IoError(e) => write!(f, "I/O Error: {e}"),
-            Error::DbusError(e) => write!(f, "D-Bus Error: {e}"),
-            Error::RedbError(e) => write!(f, "ReDB Error: {e}"),
-            Error::GpgError(e) => write!(f, "GPG Error: {e}"),
+            Error::Io(e) => write!(f, "I/O Error: {e}"),
+            Error::Dbus(e) => write!(f, "D-Bus Error: {e}"),
+            Error::Redb(e) => write!(f, "ReDB Error: {e}"),
+            Error::Gpg(e) => write!(f, "GPG Error: {e}"),
             Error::NotInitialized => write!(f, "Pass is not initialized"),
             Error::InvalidSession => write!(f, "Invalid secret service session"),
             Error::PermissionDenied => write!(f, "Access denied"),
@@ -42,19 +42,28 @@ impl std::error::Error for Error {}
 // Conversion traits for ergonomic error handling
 impl From<io::Error> for Error {
     fn from(value: io::Error) -> Self {
-        Self::IoError(value)
+        Self::Io(value)
     }
 }
 
 impl From<zbus::Error> for Error {
     fn from(value: zbus::Error) -> Self {
-        Self::DbusError(value)
+        // Boxed: zbus::Error is large and would inflate every
+        // Result in the crate (clippy::result_large_err).
+        Self::Dbus(Box::new(value))
+    }
+}
+
+impl From<Box<redb::Error>> for Error {
+    fn from(value: Box<redb::Error>) -> Self {
+        Self::Redb(value)
     }
 }
 
 impl From<redb::Error> for Error {
     fn from(value: redb::Error) -> Self {
-        Self::RedbError(value)
+        // Boxed: redb::Error is large (see the zbus note above).
+        Self::Redb(Box::new(value))
     }
 }
 
@@ -62,10 +71,10 @@ impl From<redb::Error> for Error {
 impl From<Error> for fdo::Error {
     fn from(err: Error) -> Self {
         match err {
-            Error::IoError(e) => fdo::Error::IOError(e.to_string()),
-            Error::DbusError(e) => fdo::Error::Failed(e.to_string()),
-            Error::RedbError(e) => fdo::Error::Failed(e.to_string()),
-            Error::GpgError(e) => fdo::Error::Failed(e),
+            Error::Io(e) => fdo::Error::IOError(e.to_string()),
+            Error::Dbus(e) => fdo::Error::Failed(e.to_string()),
+            Error::Redb(e) => fdo::Error::Failed(e.to_string()),
+            Error::Gpg(e) => fdo::Error::Failed(e),
             Error::NotInitialized => fdo::Error::Failed("Pass is not initialized".to_string()),
             Error::InvalidSession => fdo::Error::Failed("Invalid session".to_string()),
             Error::PermissionDenied => fdo::Error::AccessDenied("Access denied".to_string()),
@@ -76,13 +85,13 @@ impl From<Error> for fdo::Error {
 impl Error {
     pub fn dbus_error_name(&self) -> ErrorName<'_> {
         ErrorName::from_static_str_unchecked(match self {
-            Error::IoError(e) if e.kind() == ErrorKind::NotFound => {
+            Error::Io(e) if e.kind() == ErrorKind::NotFound => {
                 "org.freedesktop.Secret.Error.NoSuchObject"
             }
-            Error::IoError(_) => "org.freedesktop.DBus.Error.IOError",
-            Error::DbusError(_) => "org.freedesktop.zbus.Error",
-            Error::RedbError(_) => "me.grimsteel.PassSecretService.ReDBError",
-            Error::GpgError(_) => "me.grimsteel.PassSecretService.GPGError",
+            Error::Io(_) => "org.freedesktop.DBus.Error.IOError",
+            Error::Dbus(_) => "org.freedesktop.zbus.Error",
+            Error::Redb(_) => "me.grimsteel.PassSecretService.ReDBError",
+            Error::Gpg(_) => "me.grimsteel.PassSecretService.GPGError",
             Error::NotInitialized => "me.grimsteel.PassSecretService.PassNotInitialized",
             Error::InvalidSession => "org.freedesktop.Secret.Error.NoSession",
             Error::PermissionDenied => "org.freedesktop.DBus.Error.AccessDenied",
@@ -90,8 +99,11 @@ impl Error {
     }
     pub fn description(&self) -> Option<&str> {
         match self {
-            Error::DbusError(zbus::Error::MethodError(_, desc, _)) => desc.as_deref(),
-            Error::GpgError(e) => Some(e.as_str()),
+            Error::Dbus(e) => match &**e {
+                zbus::Error::MethodError(_, desc, _) => desc.as_deref(),
+                _ => None,
+            },
+            Error::Gpg(e) => Some(e.as_str()),
             _ => None,
         }
     }
@@ -185,7 +197,7 @@ mod tests {
             "org.freedesktop.DBus.Error.AccessDenied"
         );
         assert_eq!(
-            name(&Error::GpgError("boom".to_owned())),
+            name(&Error::Gpg("boom".to_owned())),
             "me.grimsteel.PassSecretService.GPGError"
         );
     }
@@ -211,7 +223,7 @@ mod tests {
         assert_eq!(Error::NotInitialized.to_string(), "Pass is not initialized");
         assert_eq!(Error::PermissionDenied.to_string(), "Access denied");
         assert!(
-            Error::GpgError("bad key".to_owned())
+            Error::Gpg("bad key".to_owned())
                 .to_string()
                 .contains("bad key")
         );
@@ -224,7 +236,7 @@ mod tests {
         assert_eq!(Error::NotInitialized.description(), None);
         assert_eq!(Error::PermissionDenied.description(), None);
         assert_eq!(
-            Error::GpgError("expired".to_owned()).description(),
+            Error::Gpg("expired".to_owned()).description(),
             Some("expired")
         );
     }
@@ -247,7 +259,7 @@ mod tests {
     // description as the inherent method — the two must never drift.
     #[test]
     fn dbus_error_trait_delegates_to_inherent_mapping() {
-        let err = Error::GpgError("expired".to_owned());
+        let err = Error::Gpg("expired".to_owned());
         assert_eq!(
             DBusError::name(&err).as_str(),
             "me.grimsteel.PassSecretService.GPGError"

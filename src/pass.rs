@@ -111,7 +111,7 @@ impl PasswordStore {
             // gpg decrypted successfully
             Ok(output.stdout)
         } else {
-            Err(Error::GpgError(
+            Err(Error::Gpg(
                 String::from_utf8_lossy(&output.stderr).into_owned(),
             ))
         }
@@ -174,6 +174,7 @@ impl PasswordStore {
             let mut file = OpenOptions::new()
                 .write(true)
                 .create(true)
+                .truncate(true)
                 .mode(self.file_mode)
                 .open(full_path)
                 .await?;
@@ -182,7 +183,7 @@ impl PasswordStore {
 
             Ok(())
         } else {
-            Err(Error::GpgError(
+            Err(Error::Gpg(
                 String::from_utf8_lossy(&output.stderr).into_owned(),
             ))
         }
@@ -226,6 +227,9 @@ impl PasswordStore {
         Ok(OpenOptions::new()
             .write(true)
             .create(true)
+            // read/write working handle: existing content is the
+            // stored entry and must survive the open.
+            .truncate(false)
             .read(true)
             .mode(self.file_mode)
             .open(path)
