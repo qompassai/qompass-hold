@@ -184,7 +184,7 @@ where
         let mut buf = Vec::with_capacity(len * 2);
         encode_int(len, &mut buf).unwrap();
 
-        for (k, v) in value.into_iter() {
+        for (k, v) in value.iter() {
             let key_bytes = K::as_bytes(k);
             let key_ref = key_bytes.as_ref();
             let val_bytes = V::as_bytes(v);

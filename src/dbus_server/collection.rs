@@ -45,7 +45,7 @@ impl Collection<'static> {
         #[zbus(connection)] connection: &Connection,
         #[zbus(object_server)] object_server: &ObjectServer,
     ) -> Result<ObjectPath<'_>> {
-        let secrets = self.store.list_secrets(&*self.id).await?;
+        let secrets = self.store.list_secrets(&self.id).await?;
 
         if let Some(path) = collection_path(&*self.id) {
             try_interface(object_server.remove::<Self, _>(&path).await)?;
@@ -136,7 +136,7 @@ impl Collection<'static> {
             if let Some(secret_id) = matching_secret.into_iter().nth(0).map(Arc::new) {
                 // update the secret/label
                 self.store
-                    .set_secret(&*self.id, &*secret_id, secret_value)
+                    .set_secret(&self.id, &secret_id, secret_value)
                     .await?;
                 if let Some(label) = label {
                     self.store
@@ -186,7 +186,7 @@ impl Collection<'static> {
     async fn items(&self) -> fdo::Result<Vec<ObjectPath<'_>>> {
         Ok(self
             .store
-            .list_secrets(&*self.id)
+            .list_secrets(&self.id)
             .await?
             .into_iter()
             // get the full path of the secret

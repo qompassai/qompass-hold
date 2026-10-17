@@ -133,7 +133,7 @@ impl PasswordStore {
             }
         }
         // we couldn't find a gpg key
-        return Err(Error::NotInitialized);
+        Err(Error::NotInitialized)
     }
 
     async fn ensure_dirs(&self, dir: impl AsRef<Path>) -> Result {

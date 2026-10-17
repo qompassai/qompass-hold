@@ -53,7 +53,7 @@ impl Service<'static> {
                 let collection_id = Arc::new(collection);
 
                 let secrets: Vec<_> = store
-                    .list_secrets(&*collection_id)
+                    .list_secrets(&collection_id)
                     .await?
                     .into_iter()
                     .map(|id| Item {
@@ -143,7 +143,7 @@ impl Service<'static> {
 
         let alias = slugify(&alias);
 
-        let alias = if alias == "" { None } else { Some(alias) };
+        let alias = if alias.is_empty() { None } else { Some(alias) };
 
         let id = self.store.create_collection(label, alias.clone()).await?;
         let collection_path = collection_path(&id).unwrap();
@@ -287,14 +287,13 @@ impl Service<'static> {
 
             if let Some(id) = &collection_id {
                 // add secrets under this alias
-                for secret in self.store.list_secrets(&id).await? {
-                    if let Some(path) = secret_alias_path(&*alias, &secret) {
-                        if let Some(item) =
+                for secret in self.store.list_secrets(id).await? {
+                    if let Some(path) = secret_alias_path(&*alias, &secret)
+                        && let Some(item) =
                             try_interface(object_server.interface::<_, Item>(&path).await)?
                         {
                             object_server.at(&path, item.get().await.to_owned()).await?;
                         }
-                    }
                 }
             }
 

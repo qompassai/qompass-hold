@@ -52,7 +52,7 @@ impl<'a> Item<'a> {
     ) -> Result<Secret> {
         let secret_value = self
             .store
-            .read_secret(&*self.collection_id, &*self.id, true)
+            .read_secret(&self.collection_id, &self.id, true)
             .await?;
 
         session.encrypt(secret_value, header)
@@ -124,7 +124,7 @@ impl Item<'static> {
                 .decrypt(secret, &header)?;
 
         self.store
-            .set_secret(&*self.collection_id, &*self.id, secret_value)
+            .set_secret(&self.collection_id, &self.id, secret_value)
             .await?;
 
         self.broadcast_collection_signal(connection, "ItemChanged")
@@ -189,7 +189,7 @@ impl Item<'static> {
     async fn created(&self) -> fdo::Result<u64> {
         let metadata = self
             .store
-            .stat_secret(&*self.collection_id, &*self.id)
+            .stat_secret(&self.collection_id, &self.id)
             .await?;
         Ok(time_to_int(metadata.created()))
     }
@@ -198,7 +198,7 @@ impl Item<'static> {
     async fn modified(&self) -> fdo::Result<u64> {
         let metadata = self
             .store
-            .stat_secret(&*self.collection_id, &*self.id)
+            .stat_secret(&self.collection_id, &self.id)
             .await?;
         Ok(time_to_int(metadata.modified()))
     }

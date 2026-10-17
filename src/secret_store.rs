@@ -28,8 +28,8 @@ const ALIASES_TABLE: TableDefinition<&str, &str> = TableDefinition::new("aliases
 const ALIASES_TABLE_REVERSE: MultimapTableDefinition<&str, &str> =
     MultimapTableDefinition::new("aliases_reverse");
 
-const PASS_SUBDIR: &'static str = "secret-service";
-const ATTRIBUTES_DB: &'static str = "attributes.redb";
+const PASS_SUBDIR: &str = "secret-service";
+const ATTRIBUTES_DB: &str = "attributes.redb";
 
 pub const NANOID_ALPHABET: [char; 63] = [
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
@@ -44,7 +44,7 @@ async fn open_db(pass: &PasswordStore, path: impl AsRef<Path>) -> Result<Databas
     let db_file = pass.open_file(path).await?.into_std().await;
     Ok(redb::Builder::new()
         .create_file(db_file)
-        .map_err(|e| Into::<redb::Error>::into(e))?)
+        .map_err(Into::<redb::Error>::into)?)
 }
 
 /// convert a string to a valid ASCII slug
@@ -74,7 +74,7 @@ pub fn slugify(string: &str) -> String {
 /// search a collection for the given attributes
 /// returns a vec of secret IDs
 pub fn search_collection(attrs: &HashMap<String, String>, db: &Database) -> Result<Vec<String>> {
-    if attrs.len() == 0 {
+    if attrs.is_empty() {
         return Ok(vec![]);
     };
 
@@ -83,7 +83,7 @@ pub fn search_collection(attrs: &HashMap<String, String>, db: &Database) -> Resu
     let attributes_reverse =
         raise_nonexistent_table!(tx.open_table(ATTRIBUTES_TABLE_REVERSE), Ok(vec![]));
 
-    let mut attr_iter = attrs.into_iter();
+    let mut attr_iter = attrs.iter();
 
     // get the secrets which fit the first K/V attr pair
     let initial_matches = attributes
@@ -129,7 +129,7 @@ impl<'a> SecretStore<'a> {
     pub async fn new(pass: &'a PasswordStore) -> Result<Self> {
         let collections = Self::get_current_collections(pass).await?;
 
-        let db = open_db(&pass, &format!("{PASS_SUBDIR}/collections.redb")).await?;
+        let db = open_db(pass, &format!("{PASS_SUBDIR}/collections.redb")).await?;
 
         let store = Self {
             pass,
@@ -151,7 +151,7 @@ impl<'a> SecretStore<'a> {
         {
             // make the DB for this collection
             let db_path = Path::new(PASS_SUBDIR).join(&id).join(ATTRIBUTES_DB);
-            let db = open_db(&pass, db_path).await?;
+            let db = open_db(pass, db_path).await?;
             collections.insert(id, db);
         }
 
@@ -191,7 +191,7 @@ impl<'a> SecretStore<'a> {
     /// returns a hashmap of collection id to vec of aliases
     pub async fn list_all_aliases(&self) -> Result<HashMap<String, Vec<String>>> {
         let db = self.db.clone();
-        Ok(spawn_blocking(move || -> Result<_> {
+        spawn_blocking(move || -> Result<_> {
             // open the aliases table
             let tx = db.begin_read().into_result()?;
             let table = raise_nonexistent_table!(
@@ -211,7 +211,7 @@ impl<'a> SecretStore<'a> {
                 .collect::<RedbResult<_>>()?)
         })
         .await
-        .unwrap()?)
+        .unwrap()
     }
 
     /// list the aliases that point to a collection
@@ -373,7 +373,7 @@ impl<'a> SecretStore<'a> {
             self.pass.make_dir(&collection_path).await?;
 
             collection_path.push(ATTRIBUTES_DB);
-            let db = open_db(&self.pass, collection_path).await?;
+            let db = open_db(self.pass, collection_path).await?;
 
             collections.insert(collection_id.clone(), db);
         }
@@ -451,7 +451,7 @@ impl<'a> SecretStore<'a> {
         spawn_blocking(move || {
             let cols = collections.blocking_read();
             let db = cols.get(collection_id.as_ref()).into_not_found()?;
-            Ok(search_collection(&attributes, db)?)
+            search_collection(&attributes, db)
         })
         .await
         .unwrap()
@@ -461,13 +461,13 @@ impl<'a> SecretStore<'a> {
     pub async fn stat_collection(&self, collection_id: &str) -> Result<Metadata> {
         // just use the attributes db file rather than actually calculating the last modified date
         let collection_path = Path::new(PASS_SUBDIR)
-            .join(&collection_id)
+            .join(collection_id)
             .join(ATTRIBUTES_DB);
-        Ok(self.pass.stat_file(collection_path).await?)
+        self.pass.stat_file(collection_path).await
     }
 
     pub async fn list_secrets(&self, collection_id: &str) -> Result<Vec<String>> {
-        let collection_path = Path::new(PASS_SUBDIR).join(&collection_id);
+        let collection_path = Path::new(PASS_SUBDIR).join(collection_id);
 
         Ok(self
             .pass
@@ -496,7 +496,7 @@ impl<'a> SecretStore<'a> {
     ) -> Result<Vec<u8>> {
         let secret_path = Path::new(PASS_SUBDIR).join(collection_id).join(secret_id);
 
-        Ok(self.pass.read_password(secret_path, can_prompt).await?)
+        self.pass.read_password(secret_path, can_prompt).await
     }
 
     /// read the attributes for the given secret
@@ -581,10 +581,10 @@ impl<'a> SecretStore<'a> {
 
     pub async fn stat_secret(&self, collection_id: &str, secret_id: &str) -> Result<Metadata> {
         let secret_path = Path::new(PASS_SUBDIR)
-            .join(&*collection_id)
-            .join(&format!("{secret_id}.gpg"));
+            .join(collection_id)
+            .join(format!("{secret_id}.gpg"));
 
-        Ok(self.pass.stat_file(secret_path).await?)
+        self.pass.stat_file(secret_path).await
     }
 
     /// creates a new secret in a collection with the given label, attributes, and value
@@ -653,9 +653,9 @@ impl<'a> SecretStore<'a> {
     }
 
     pub async fn set_secret(&self, collection_id: &str, secret_id: &str, value: Vec<u8>) -> Result {
-        let collection_dir = Path::new(PASS_SUBDIR).join(&*collection_id);
+        let collection_dir = Path::new(PASS_SUBDIR).join(collection_id);
 
-        let secret_path = collection_dir.join(&*secret_id);
+        let secret_path = collection_dir.join(secret_id);
 
         // write the password
         self.pass.write_password(secret_path, value).await?;
